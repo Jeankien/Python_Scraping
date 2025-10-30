@@ -151,6 +151,28 @@ def show_book_infos(cat_title):
     for book in get_books(cat_title):
         print(book)
 
+def to_df(data):
+    """
+    Convertit une liste de livres en un DataFrame Pandas structuré.
+
+    Chaque élément de {data} doit être une liste contenant les informations d'un livre dans l'ordre suivant:
+    [Title, Price, Availability, Rating, Product URL, Image URL, UPC, Category].
+
+    Args:
+        data (list of list): Liste de livres où chaque livre est représenté par une liste de ses attributs.
+
+    Returns:
+        pandas.DataFrame: DataFrame contenant toutes les informations des livres avec les colonnes :
+            ['Title', 'Price', 'Availability', 'Rating', 'Product URL', 'Image URL', 'UPC', 'Category'].
+    """
+    columns = ['Title', 'Price', 'Availability', 'Rating', 'Product URL', 'Image URL', 'UPC', 'Category']
+
+    df = pd.DataFrame(columns=columns)
+    for book in data:
+        df= pd.concat([df,pd.DataFrame([book], columns=columns)],ignore_index=True)
+    
+    return df
+
 def save_to_csv(cat_title,output_dir=None):
     """
     Sauvegarde les informations d'une catégorie dans un fichier CSV.
@@ -160,11 +182,7 @@ def save_to_csv(cat_title,output_dir=None):
         output_dir (str, optional): Nom du dossier de sortie (créé s'il n'existe pas).
     """
     data=get_books(cat_title)
-    columns = ['Title', 'Price', 'Availability', 'Rating', 'Product URL', 'Image URL', 'UPC', 'Category']
-
-    df = pd.DataFrame(columns=columns)
-    for book in data:
-        df= pd.concat([df,pd.DataFrame([book], columns=columns)],ignore_index=True)
+    df = to_df(data)
 
     filepath=os.path.abspath(__file__) #chemin absolu du script (contient le nom du script)
     path=os.path.dirname(filepath)     #chemin absolu du directoire parent du script
@@ -237,47 +255,96 @@ def save_to_image_dir(cat_title,output_dir=None):
             print("Failed to download image")
 
 
+def analyze_category(cat_title):
+    """
+    Analyse les données d'une catégorie de livres et affiche des statistiques de base.
+
+    La fonction récupère les livres d'une catégorie via {get_books}, convertit les données
+    en DataFrame avec {to_df}, puis effectue les analyses suivantes :
+    - Prix moyen des livres
+    - Distribution des ratings
+    - Nombre total de livres
+
+    Args:
+        cat_title (str): Nom de la catégorie à analyser.
+
+    Notes:
+        - La colonne 'Price' est convertie en numérique pour le calcul de la moyenne.
+        - La distribution des ratings est calculée à partir de la colonne 'Rating'.
+        - Le DataFrame attendu contient les colonnes :
+          ['Title', 'Price', 'Availability', 'Rating', 'Product URL', 'Image URL', 'UPC', 'Category'].
+    """
+    data=get_books(cat_title)
+    df = to_df(data)
+
+    # Changer Price en numerique
+    df['Price'] = pd.to_numeric(df['Price'], errors='coerce')
+
+    # Afficher prix moyen
+    avg_price = df['Price'].mean()
+    print(f"Prix moyen pour {cat_title} : €{avg_price:.2f}")
+
+    # Rating distribution
+    rating_counts = df['Rating'].value_counts()
+    print("Distribution des ratings:")
+    print(rating_counts)
+
+    # Nombre de livres
+    total_books = len(df)
+    print("Nombre total de livres: ",total_books)
+
+
 def main():
     """
     Point d'entrée du script.
     
     Utilisation en ligne de commande :
-        python script.py -c "Travel" "Poetry" -o output_dir -i -v
+        python script.py -c "Travel" "Poetry" -o output_dir -i -v -a
 
     Options :
         -c / --categories : liste de catégories à scraper ou "All" pour tout.
         -o / --outdir     : nom du dossier de sortie.
         -i / --images     : si présent, télécharge les images.
         -v / --verbose    : si présent, affiche les logs d'exécution.
+        -a / --analyze    : si présent, analyse la catégorie.
     """
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-                        '-c','--categories', 
-                        nargs='+', 
+                        "-c","--categories", 
+                        nargs="+", 
                         required=True,
-                        help='Choose one or more categories, e.g., --categories cat1 cat2. Use "All" to extract all.'
+                        help="Choose one or more categories, e.g., --categories cat1 cat2. Use 'All' to extract all."
                         )
     parser.add_argument(
-                        '-o','--outdir', 
+                        "-o","--outdir", 
                         default=None, 
-                        help='Choose the name of the output directory'
+                        help="Choose the name of the output directory"
                         )
     parser.add_argument(
-                        '-i','--images', 
-                        action='store_true', 
-                        help='Save cover images (default: False)'
+                        "-i","--images", 
+                        action="store_true", 
+                        help="Save cover images (default: False)"
                         )
     parser.add_argument(
-                        '-v','--verbose', 
-                        action='store_true', 
-                        help='Increase verbosity'
+                        "-v","--verbose", 
+                        action="store_true", 
+                        help="Increase verbosity"
+                        )
+    parser.add_argument(
+                        "-a","--analyze", 
+                        action="store_true", 
+                        help="Show category books' details"
                         )
     args = parser.parse_args()
     if args.categories[0].lower()=="all":
         for category in categories[1:]: #Ne pas prendre "Books" car ca contient tous les livres sans les categories differentes
             if args.verbose:
                 print(category)
+
+            if args.analyze:
+                analyze_category(category)
+
             save_to_csv(category)
             save_to_image_dir(category)
     else:
@@ -285,6 +352,11 @@ def main():
             if args.verbose:
                 print("---------------------",category,"---------------------")
                 show_book_infos(category)
+
+            if args.analyze:
+                print("---------------------",category,"analysis ---------------------")
+                analyze_category(category)
+
             save_to_csv(category.capitalize(),args.outdir)
             if args.images:
                 save_to_image_dir(category,args.outdir)
